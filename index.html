@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>🐶いぬジャンプチャレンジ</title>
+
+<style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+-webkit-tap-highlight-color:transparent;
+}
+
+html,body{
+width:100%;
+height:100%;
+overflow:hidden;
+touch-action:none;
+font-family:sans-serif;
+background:#111;
+}
+
+.screen{
+display:none;
+width:100%;
+height:100%;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+padding:20px;
+text-align:center;
+color:#fff;
+}
+
+.screen.active{
+display:flex;
+}
+
+h1{
+margin-bottom:20px;
+font-size:2rem;
+}
+
+p{
+line-height:1.8;
+margin-bottom:10px;
+}
+
+button{
+width:240px;
+height:64px;
+border:none;
+border-radius:16px;
+font-size:1.2rem;
+font-weight:bold;
+background:#ff9800;
+color:#fff;
+}
+
+#gameScreen{
+padding:0;
+justify-content:flex-start;
+background:#87ceeb;
+}
+
+#ui{
+width:100%;
+height:60px;
+display:flex;
+justify-content:space-around;
+align-items:center;
+background:#222;
+color:#fff;
+font-weight:bold;
+font-size:1rem;
+}
+
+#gameArea{
+position:relative;
+width:100%;
+height:calc(100vh - 60px);
+overflow:hidden;
+touch-action:none;
+background:linear-gradient(#87ceeb,#dff6ff);
+}
+
+#ground{
+position:absolute;
+left:0;
+bottom:0;
+width:100%;
+height:80px;
+background:#4caf50;
+}
+
+#dog{
+position:absolute;
+left:60px;
+bottom:80px;
+font-size:60px;
+z-index:10;
+user-select:none;
+}
+
+.obstacle{
+position:absolute;
+bottom:80px;
+font-size:44px;
+}
+
+.star{
+position:absolute;
+font-size:40px;
+}
+
+#jumpBtn{
+position:absolute;
+right:15px;
+bottom:100px;
+width:120px;
+height:120px;
+border-radius:50%;
+background:#e91e63;
+color:#fff;
+font-size:1.2rem;
+z-index:20;
+}
+
+.invincible{
+filter:drop-shadow(0 0 12px gold);
+animation:flash .3s infinite;
+}
+
+@keyframes flash{
+50%{
+transform:scale(1.08);
+}
+}
+
+#rank{
+font-size:2rem;
+color:gold;
+margin:20px 0;
+}
+
+#status{
+color:#ffeb3b;
+}
+
+@media (max-width:480px){
+
+h1{
+font-size:1.8rem;
+}
+
+#jumpBtn{
+width:110px;
+height:110px;
+}
+}
+</style>
+</head>
+
+<body>
+
+<div id="startScreen" class="screen active">
+<h1>🐶いぬジャンプチャレンジ</h1>
+
+<p>
+ジャンプして障害物をよけよう！<br>
+⭐を取ると5秒間無敵！<br>
+30秒間で高得点を目指そう！
+</p>
+
+<p>
+【操作】<br>
+画面タップ・ボタン・クリック<br>
+どれでもジャンプ！
+</p>
+
+<button id="startBtn">スタート</button>
+</div>
+
+<div id="gameScreen" class="screen">
+
+<div id="ui">
+<div>スコア:<span id="score">0</span></div>
+<div>残り:<span id="time">30</span>秒</div>
+<div id="status">通常</div>
+</div>
+
+<div id="gameArea">
+
+<div id="dog">🐶</div>
+
+<div id="ground"></div>
+
+<button id="jumpBtn">JUMP</button>
+
+</div>
+</div>
+
+<div id="resultScreen" class="screen">
+<h1>結果発表</h1>
+
+<div style="font-size:1.8rem;margin:10px;">
+スコア:<span id="finalScore">0</span>
+</div>
+
+<div id="rank">C</div>
+
+<button id="retryBtn">もう一度遊ぶ</button>
+</div>
+
+<script>
+const startScreen=document.getElementById("startScreen");
+const gameScreen=document.getElementById("gameScreen");
+const resultScreen=document.getElementById("resultScreen");
+
+const gameArea=document.getElementById("gameArea");
+const dog=document.getElementById("dog");
+
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const statusEl=document.getElementById("status");
+const finalScoreEl=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+
+let score=0;
+let timeLeft=30;
+
+let dogY=0;
+let velocity=0;
+
+const gravity=0.9;
+const jumpPower=15;
+
+let obstacles=[];
+let stars=[];
+
+let running=false;
+let invincible=false;
+
+let gameLoopId;
+let timerId;
+let obstacleId;
+let starId;
+let invincibleTimer;
+
+function showScreen(screen){
+document.querySelectorAll(".screen").forEach(s=>{
+s.classList.remove("active");
+});
+screen.classList.add("active");
+}
+
+function startGame(){
+
+showScreen(gameScreen);
+
+score=0;
+timeLeft=30;
+
+dogY=0;
+velocity=0;
+
+running=true;
+invincible=false;
+
+scoreEl.textContent=0;
+timeEl.textContent=30;
+statusEl.textContent="通常";
+
+dog.classList.remove("invincible");
+
+document.querySelectorAll(".obstacle,.star").forEach(e=>e.remove());
+
+obstacles=[];
+stars=[];
+
+timerId=setInterval(()=>{
+timeLeft--;
+timeEl.textContent=timeLeft;
+
+if(timeLeft<=0){
+endGame(true);
+}
+},1000);
+
+obstacleId=setInterval(createObstacle,1200);
+starId=setInterval(createStar,7000);
+
+createObstacle();
+
+gameLoop();
+}
+
+function createObstacle(){
+
+if(!running)return;
+
+const obs=document.createElement("div");
+
+obs.className="obstacle";
+
+const list=["🪨","🔥","⚡"];
+
+obs.textContent=list[Math.floor(Math.random()*list.length)];
+
+obs.style.right="-60px";
+
+obs.speed=4+Math.random()*1.5;
+
+gameArea.appendChild(obs);
+
+obstacles.push(obs);
+}
+
+function createStar(){
+
+if(!running)return;
+
+const star=document.createElement("div");
+
+star.className="star";
+star.textContent="⭐";
+
+star.style.right="-60px";
+star.style.bottom=(140+Math.random()*120)+"px";
+
+star.speed=4;
+
+gameArea.appendChild(star);
+
+stars.push(star);
+}
+
+function jump(){
+
+if(!running)return;
+
+if(dogY===0){
+velocity=jumpPower;
+}
+}
+
+function activateStar(){
+
+invincible=true;
+
+dog.classList.add("invincible");
+
+statusEl.textContent="⭐無敵";
+
+clearTimeout(invincibleTimer);
+
+invincibleTimer=setTimeout(()=>{
+invincible=false;
+dog.classList.remove("invincible");
+statusEl.textContent="通常";
+},5000);
+}
+
+function gameLoop(){
+
+if(!running)return;
+
+velocity-=gravity;
+dogY+=velocity;
+
+if(dogY<0){
+dogY=0;
+velocity=0;
+}
+
+dog.style.bottom=(80+dogY)+"px";
+
+const dogRect=dog.getBoundingClientRect();
+
+for(let i=obstacles.length-1;i>=0;i--){
+
+const obs=obstacles[i];
+
+let pos=parseFloat(obs.style.right||0);
+pos+=obs.speed;
+
+obs.style.right=pos+"px";
+
+const rect=obs.getBoundingClientRect();
+
+if(
+dogRect.left<rect.right &&
+dogRect.right>rect.left &&
+dogRect.top<rect.bottom &&
+dogRect.bottom>rect.top
+){
+
+if(invincible){
+
+obs.remove();
+obstacles.splice(i,1);
+
+score+=3;
+scoreEl.textContent=score;
+
+}else{
+endGame(false);
+return;
+}
+}
+
+if(pos>window.innerWidth+80){
+
+obs.remove();
+obstacles.splice(i,1);
+
+score++;
+scoreEl.textContent=score;
+}
+}
+
+for(let i=stars.length-1;i>=0;i--){
+
+const star=stars[i];
+
+let pos=parseFloat(star.style.right||0);
+pos+=star.speed;
+
+star.style.right=pos+"px";
+
+const rect=star.getBoundingClientRect();
+
+if(
+dogRect.left<rect.right &&
+dogRect.right>rect.left &&
+dogRect.top<rect.bottom &&
+dogRect.bottom>rect.top
+){
+
+activateStar();
+
+star.remove();
+stars.splice(i,1);
+continue;
+}
+
+if(pos>window.innerWidth+80){
+star.remove();
+stars.splice(i,1);
+}
+}
+
+gameLoopId=requestAnimationFrame(gameLoop);
+}
+
+function endGame(clear){
+
+running=false;
+
+cancelAnimationFrame(gameLoopId);
+
+clearInterval(timerId);
+clearInterval(obstacleId);
+clearInterval(starId);
+
+clearTimeout(invincibleTimer);
+
+finalScoreEl.textContent=score;
+
+let rank="C";
+
+if(score>=8) rank="B";
+if(score>=15) rank="A";
+if(score>=25) rank="S";
+if(score>=40) rank="SS";
+if(score>=60) rank="SSS";
+
+if(!clear){
+rank+="（ゲームオーバー）";
+}
+
+rankEl.textContent=rank;
+
+showScreen(resultScreen);
+}
+
+document.getElementById("startBtn").addEventListener("click",startGame);
+document.getElementById("retryBtn").addEventListener("click",startGame);
+
+document.addEventListener("pointerdown",(e)=>{
+
+if(e.target.id==="startBtn" || e.target.id==="retryBtn"){
+return;
+}
+
+jump();
+});
+
+document.getElementById("jumpBtn").addEventListener("pointerdown",(e)=>{
+e.stopPropagation();
+jump();
+});
+
+document.addEventListener("keydown",(e)=>{
+if(e.code==="Space" || e.code==="ArrowUp"){
+jump();
+}
+});
+</script>
+
+</body>
+</html>
